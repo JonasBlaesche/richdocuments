@@ -114,7 +114,13 @@ class TokenManager {
 		}
 		$row = new Wopi();
 		$serverHost = $this->urlGenerator->getAbsoluteURL('/');//$this->request->getServerProtocol() . '://' . $this->request->getServerHost();
-		$token = $row->generateFileToken($fileId, $owneruid, $this->userId, $version, (int)$updatable, $serverHost);
+		
+		if(is_null($this->userId))
+			$checkedUserId = isset($_COOKIE['guestUser']) ? $_COOKIE['guestUser'] : null ;
+		else
+			$checkedUserId = $this->userId;
+
+		$token = $row->generateFileToken($fileId, $owneruid, $checkedUserId, $version, (int)$updatable, $serverHost);
 
 		try {
 
