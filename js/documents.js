@@ -1,315 +1,627 @@
-<?php
-/**
- * @copyright Copyright (c) 2016-2017 Lukas Reschke <lukas@statuscode.ch>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- */
+/*globals $,OC,fileDownloadPath,t,document,odf,alert,require,dojo,runtime,Handlebars */
 
-namespace OCA\Richdocuments\Controller;
+$.widget('oc.documentGrid', {
+	options : {
+		context : '.documentslist',
+		documents : {},
+		sessions : {},
+		members : {}
+	},
 
-use OC\Files\View;
-use OCA\Richdocuments\TokenManager;
-use OCA\Richdocuments\Db\Wopi;
-use OCA\Richdocuments\Helper;
-use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http;
-use OCP\AppFramework\Http\JSONResponse;
-use OCP\Files\File;
-use OCP\Files\IRootFolder;
-use OCP\IConfig;
-use OCP\IRequest;
-use OCP\IURLGenerator;
-use OCP\AppFramework\Http\StreamResponse;
-use OCP\IUserManager;
+	render : function(fileId){
+		var that = this;
+		jQuery.when(this._load(fileId))
+			.then(function(){
+				that._render();
+				documentsMain.renderComplete = true;
+			});
+	},
 
-class WopiController extends Controller {
-	/** @var IRootFolder */
-	private $rootFolder;
-	/** @var IURLGenerator */
-	private $urlGenerator;
-	/** @var IConfig */
-	private $config;
-	/** @var ITokenManager */
-	private $tokenManager;
-	/** @var IUserManager */
-	private $userManager;
+	_load : function (fileId){
+		documentsMain.initSession();
+	},
 
-	// Signifies LOOL that document has been changed externally in this storage
-	const LOOL_STATUS_DOC_CHANGED = 1010;
+	_render : function (data){
+		var that = this,
+			documents = data && data.documents || this.options.documents,
+			sessions = data && data.sessions || this.options.sessions,
+			members = data && data.members || this.options.members,
+			hasDocuments = false
+		;
 
-	/**
-	 * @param string $appName
-	 * @param string $UserId
-	 * @param IRequest $request
-	 * @param IRootFolder $rootFolder
-	 * @param IURLGenerator $urlGenerator
-	 * @param IConfig $config
-	 * @param ITokenManager $tokenManager
-	 * @param IUserManager $userManager
-	 */
-	public function __construct($appName,
-								$UserId,
-								IRequest $request,
-								IRootFolder $rootFolder,
-								IURLGenerator $urlGenerator,
-								IConfig $config,
-								TokenManager $tokenManager,
-								IUserManager $userManager) {
-		parent::__construct($appName, $request);
-		$this->rootFolder = $rootFolder;
-		$this->urlGenerator = $urlGenerator;
-		$this->config = $config;
-		$this->tokenManager = $tokenManager;
-		$this->userManager = $userManager;
-	}
+		$(this.options.context + ' .document:not(.template,.progress)').remove();
 
-
-
-	/**
-	 * Returns general info about a file.
-	 *
-	 * @NoAdminRequired
-	 * @NoCSRFRequired
-	 * @PublicPage
-	 *
-	 * @param string $fileId
-	 * @return JSONResponse
-	 */
-	public function checkFileInfo($fileId) {
-
-		$token = $this->request->getParam('access_token');
-
-		list($fileId, , $version) = Helper::parseFileId($fileId);
-		$db = new Wopi();
-		$res = $db->getPathForToken($fileId, $token);
-		if ($res === false) {
-			return new JSONResponse([], Http::STATUS_FORBIDDEN);
-		}
-
-		// Login the user to see his mount locations
-		try {
-			/** @var File $file */
-			$userFolder = $this->rootFolder->getUserFolder($res['owner']);
-			$file = $userFolder->getById($fileId)[0];
-		} catch (\Exception $e) {
-			return new JSONResponse([], Http::STATUS_FORBIDDEN);
-		}
-
-		if(!($file instanceof File)) {
-			return new JSONResponse([], Http::STATUS_FORBIDDEN);
-		}
-
-		$response = [
-			'BaseFileName' => $file->getName(),
-			'Size' => $file->getSize(),
-			'Version' => $version,
-			'UserId' => $res['editor'] != '' ? $res['editor'] : 'Guest user',
-			'OwnerId' => $res['owner'],
-			'UserFriendlyName' => $res['editor'] != '' ? \OC_User::getDisplayName($res['editor']) : 'Guest user',
-			'UserExtraInfo' => [
-			],
-			'UserCanWrite' => $res['canwrite'] ? true : false,
-			'UserCanNotWriteRelative' => \OC::$server->getEncryptionManager()->isEnabled() ? true : false,
-			'PostMessageOrigin' => $res['server_host'],
-			'LastModifiedTime' => Helper::toISO8601($file->getMtime())
-		];
-
-		$serverVersion = $this->config->getSystemValue('version');
-		if (version_compare($serverVersion, '13', '>=')) {
-			$user = $this->userManager->get($res['editor']);
-			if($user !== null) {
-				if($user->getAvatarImage(32) !== null) {
-					$response['UserExtraInfo']['avatar'] = $this->urlGenerator->linkToRouteAbsolute('core.avatar.getAvatar', ['userId' => $res['editor'], 'size' => 32]);
-				}
-			}
-		}
-
-		return new JSONResponse($response);
-	}
-
-	/**
-	 * Given an access token and a fileId, returns the contents of the file.
-	 * Expects a valid token in access_token parameter.
-	 *
-	 * @PublicPage
-	 * @NoCSRFRequired
-	 *
-	 * @param string $fileId
-	 * @param string $access_token
-	 * @return Http\Response
-	 */
-	public function getFile($fileId,
-							$access_token) {
-		list($fileId, , $version) = Helper::parseFileId($fileId);
-		$row = new Wopi();
-		$row->loadBy('token', $access_token);
-		$res = $row->getPathForToken($fileId, $access_token);
-		try {
-			/** @var File $file */
-			$userFolder = $this->rootFolder->getUserFolder($res['owner']);
-			$file = $userFolder->getById($fileId)[0];
-			\OC_User::setIncognitoMode(true);
-			if ($version !== '0')
-			{
-				$view = new View('/' . $res['owner'] . '/files');
-				$relPath = $view->getRelativePath($file->getPath());
-				$versionPath = '/files_versions/' . $relPath . '.v' . $version;
-				$view = new View('/' . $res['owner']);
-				if ($view->file_exists($versionPath)){
-					$response = new StreamResponse($view->fopen($versionPath, 'rb'));
-				}
-				else {
-					$response->setStatus(Http::STATUS_NOT_FOUND);
-				}
-			}
-			else
-			{
-				$response = new StreamResponse($file->fopen('rb'));
-			}
-			$response->addHeader('Content-Disposition', 'attachment');
-			$response->addHeader('Content-Type', 'application/octet-stream');
-			return $response;
-		} catch (\Exception $e) {
-			return new JSONResponse([], Http::STATUS_FORBIDDEN);
+		if (documentsMain.loadError) {
+			$(this.options.context).after('<div id="errormessage">'
+				+ '<p>' + documentsMain.loadErrorMessage + '</p><p>'
+				+ documentsMain.loadErrorHint
+				+ '</p></div>'
+			);
+			return;
 		}
 	}
+});
 
-	/**
-	 * Given an access token and a fileId, replaces the files with the request body.
-	 * Expects a valid token in access_token parameter.
-	 *
-	 * @PublicPage
-	 * @NoCSRFRequired
-	 *
-	 * @param string $fileId
-	 * @param string $access_token
-	 * @return JSONResponse
-	 */
-	public function putFile($fileId,
-							$access_token) {
-		list($fileId, , $version) = Helper::parseFileId($fileId);
-		$isPutRelative = ($this->request->getHeader('X-WOPI-Override') === 'PUT_RELATIVE');
+$.widget('oc.documentOverlay', {
+	options : {
+		parent : 'document.body'
+	},
+	_create : function (){
+		$(this.element).hide().appendTo(document.body);
+	},
+	show : function(){
+		$(this.element).fadeIn('fast');
+	},
+	hide : function(){
+		$(this.element).fadeOut('fast');
+	}
+});
 
-		$row = new Wopi();
-		$row->loadBy('token', $access_token);
+var documentsMain = {
+	isEditorMode : false,
+	isViewerMode: false,
+	isGuest : false,
+	esId : false,
+	ready :false,
+	fileName: null,
+	baseName: null,
+	canShare : false,
+	canEdit: false,
+	loadError : false,
+	loadErrorMessage : '',
+	loadErrorHint : '',
+	renderComplete: false, // false till page is rendered with all required data about the document(s)
+	toolbar : '<div id="ocToolbar"><div id="ocToolbarInside"></div><span id="toolbar" class="claro"></span></div>',
 
-		$res = $row->getPathForToken($fileId, $access_token);
-		if (!$res['canwrite']) {
-			return new JSONResponse([], Http::STATUS_FORBIDDEN);
-		}
+	UI : {
+		/* Editor wrapper HTML */
+		container : '<div id="mainContainer" class="claro">' +
+					'</div>',
 
-		try {
-			/** @var File $file */
-			$userFolder = $this->rootFolder->getUserFolder($res['owner']);
-			$file = $userFolder->getById($fileId)[0];
+		viewContainer: '<div id="revViewerContainer" class="claro">' +
+					   '<div id="revViewer"></div>' +
+					   '</div>',
 
-			if ($isPutRelative) {
-				$suggested = $this->request->getHeader('X-WOPI-SuggestedTarget');
-				$suggested = iconv('utf-7', 'utf-8', $suggested);
+		revHistoryContainerTemplate: '<div id="revPanelContainer" class="loleaflet-font">' +
+			'<div id="revPanelHeader">' +
+			'<h2>Revision History</h2>' +
+			'<span>{{filename}}</span>' +
+			'<a class="closeButton"><img src={{closeButtonUrl}} width="22px" height="22px"></a>' +
+			'</div>' +
+			'<div id="revisionsContainer" class="loleaflet-font">' +
+			'<ul></ul>' +
+			'</div>' +
+			'<input type="button" id="show-more-versions" class="loleaflet-font" value="{{moreVersionsLabel}}" />' +
+			'</div>',
 
-				$path = '';
-				if ($suggested[0] === '.') {
-					$path = dirname($file->getPath()) . '/New File' . $suggested;
-				}
-				else if ($suggested[0] !== '/') {
-					$path = dirname($file->getPath()) . '/' . $suggested;
-				}
-				else {
-					$path = $userFolder->getPath() . $suggested;
-				}
+		revHistoryItemTemplate: '<li>' +
+			'<a href="{{downloadUrl}}" class="downloadVersion has-tooltip" title="' + t('richdocuments', 'Download this revision') + '"><img src="{{downloadIconUrl}}" />' +
+			'<a class="versionPreview"><span class="versiondate has-tooltip" title="{{formattedTimestamp}}">{{relativeTimestamp}}</span></a>' +
+			'<a href="{{restoreUrl}}" class="restoreVersion has-tooltip" title="' + t('richdocuments', 'Restore this revision') + '"><img src="{{restoreIconUrl}}" />' +
+			'</a>' +
+			'</li>',
 
-				if ($path === '') {
-					return array(
-						'status' => 'error',
-						'message' => 'Cannot create the file'
-					);
-				}
+		/* Previous window title */
+		mainTitle : '',
+		/* Number of revisions already loaded */
+		revisionsStart: 0,
 
-				$root = \OC::$server->getRootFolder();
+		init : function(){
+			documentsMain.UI.mainTitle = $('title').text();
+		},
 
-				// create the folder first
-				if (!$root->nodeExists(dirname($path))) {
-					$root->newFolder(dirname($path));
-				}
-
-				// create a unique new file
-				$path = $root->getNonExistingName($path);
-				$root->newFile($path);
-				$file = $root->get($path);
+		showViewer: function(fileId, title){
+			// remove previous viewer, if open, and set a new one
+			if (documentsMain.isViewerMode) {
+				$('#revViewer').remove();
+				$('#revViewerContainer').prepend($('<div id="revViewer">'));
 			}
+
+			// WOPISrc - URL that loolwsd will access (ie. pointing to ownCloud)
+			var wopiurl = window.location.protocol + '//' + window.location.host + OC.generateUrl('apps/richdocuments/wopi/files/{file_id}', {file_id: fileId});
+			var wopisrc = encodeURIComponent(wopiurl);
+
+			// urlsrc - the URL from discovery xml that we access for the particular
+			// document; we add various parameters to that.
+			// The discovery is available at
+			//   https://<loolwsd-server>:9980/hosting/discovery
+			var urlsrc = documentsMain.urlsrc +
+			  "WOPISrc=" + wopisrc +
+			  "&title=" + encodeURIComponent(title) +
+			  "&lang=" + OC.getLocale().replace('_', '-') + // loleaflet expects a BCP47 language tag syntax
+			  "&permission=readonly";
+
+			// access_token - must be passed via a form post
+			var access_token = encodeURIComponent(documentsMain.token);
+
+			// form to post the access token for WOPISrc
+			var form = '<form id="loleafletform_viewer" name="loleafletform_viewer" target="loleafletframe_viewer" action="' + urlsrc + '" method="post">' +
+			  '<input name="access_token" value="' + access_token + '" type="hidden"/></form>';
+
+			// iframe that contains the Collabora Online Viewer
+			var frame = '<iframe id="loleafletframe_viewer" name= "loleafletframe_viewer" style="width:100%;height:100%;position:absolute;"/>';
+
+			$('#revViewer').append(form);
+			$('#revViewer').append(frame);
+
+			// submit that
+			$('#loleafletform_viewer').submit();
+			documentsMain.isViewerMode = true;
+
+			// for closing revision mode
+			$('#revPanelHeader .closeButton').click(function(e) {
+				e.preventDefault();
+				documentsMain.onCloseViewer();
+			});
+		},
+
+		addRevision: function(fileId, version, relativeTimestamp, documentPath) {
+			var formattedTimestamp = OC.Util.formatDate(parseInt(version) * 1000);
+			var fileName = documentsMain.fileName.substring(0, documentsMain.fileName.indexOf('.'));
+			var downloadUrl, restoreUrl;
+			if (version === 0) {
+				formattedTimestamp = t('richdocuments', 'Latest revision');
+				downloadUrl = OC.generateUrl('apps/files/download'+ documentPath);
+			} else {
+				downloadUrl = OC.generateUrl('apps/files_versions/download.php?file={file}&revision={revision}',
+				                             {file: documentPath, revision: version});
+				fileId = fileId + '_' + version;
+				restoreUrl = OC.generateUrl('apps/files_versions/ajax/rollbackVersion.php?file={file}&revision={revision}',
+				                             {file: documentPath, revision: version});
+			}
+
+			var revHistoryItemTemplate = Handlebars.compile(documentsMain.UI.revHistoryItemTemplate);
+			var html = revHistoryItemTemplate({
+				downloadUrl: downloadUrl,
+				downloadIconUrl: OC.imagePath('core', 'actions/download'),
+				restoreUrl: restoreUrl,
+				restoreIconUrl: OC.imagePath('core', 'actions/history'),
+				relativeTimestamp: relativeTimestamp,
+				formattedTimestamp: formattedTimestamp
+			});
+
+			html = $(html).attr('data-fileid', fileId)
+				          .attr('data-title', fileName + ' - ' + formattedTimestamp);
+			$('#revisionsContainer ul').append(html);
+		},
+
+		fetchAndFillRevisions: function(documentPath) {
+			// fill #rev-history with file versions
+			$.get(OC.generateUrl('apps/files_versions/ajax/getVersions.php?source={documentPath}&start={start}',
+			                     { documentPath: documentPath, start: documentsMain.UI.revisionsStart }),
+				  function(result) {
+					  for(var key in result.data.versions) {
+						  documentsMain.UI.addRevision(documentsMain.fileId,
+						                               result.data.versions[key].version,
+						                               result.data.versions[key].humanReadableTimestamp,
+						                               documentPath);
+					  }
+
+					  // owncloud only gives 5 version at max in one go
+					  documentsMain.UI.revisionsStart += 5;
+
+					  if (result.data.endReached) {
+						  // Remove 'More versions' button
+						  $('#show-more-versions').addClass('hidden');
+					  }
+				  });
+		},
+
+		showRevHistory: function(documentPath) {
+			$(document.body).prepend(documentsMain.UI.viewContainer);
+
+			var revHistoryContainerTemplate = Handlebars.compile(documentsMain.UI.revHistoryContainerTemplate);
+			var revHistoryContainer = revHistoryContainerTemplate({
+				filename: documentsMain.fileName,
+				moreVersionsLabel: t('richdocuments', 'More versions…'),
+				closeButtonUrl: OC.imagePath('core', 'actions/close')
+			});
+			$('#revViewerContainer').prepend(revHistoryContainer);
+
+			documentsMain.UI.revisionsStart = 0;
+
+			// append current document first
+			documentsMain.UI.addRevision(documentsMain.fileId, 0, t('richdocuments', 'Just now'), documentPath);
+
+			// add "Show more versions" button
+			$('#show-more-versions').click(function(e) {
+				e.preventDefault();
+				documentsMain.UI.fetchAndFillRevisions(documentPath);
+			});
+
+			// fake click to load first 5 versions
+			$('#show-more-versions').click();
+
+			// make these revisions clickable/attach functionality
+			$('#revisionsContainer').on('click', '.versionPreview', function(e) {
+				e.preventDefault();
+				documentsMain.UI.showViewer(e.currentTarget.parentElement.dataset.fileid,
+				                            e.currentTarget.parentElement.dataset.title);
+
+				// mark only current <li> as active
+				$(e.currentTarget.parentElement.parentElement).find('li').removeClass('active');
+				$(e.currentTarget.parentElement).addClass('active');
+			});
+
+			$('#revisionsContainer').on('click', '.restoreVersion', function(e) {
+				e.preventDefault();
+
+				// close the viewer
+				documentsMain.onCloseViewer();
+
+				// close the editor
+				documentsMain.UI.hideEditor();
+
+				// If there are changes in the opened editor, we need to wait
+				// for sometime before these changes can be saved and a revision is created for it,
+				// before restoring to requested version.
+				documentsMain.overlay.documentOverlay('show');
+				setTimeout(function() {
+					// restore selected version
+					$.ajax({
+						type: 'GET',
+						url: e.currentTarget.href,
+						success: function(response) {
+							if (response.status === 'error') {
+								documentsMain.UI.notify(t('richdocuments', 'Failed to revert the document to older version'));
+							}
+
+							// load the file again, it should get reverted now
+							window.location = OC.generateUrl('apps/richdocuments/index#{fileid}', {fileid: e.currentTarget.parentElement.dataset.fileid});
+							window.location.reload();
+							documentsMain.overlay.documentOverlay('hide');
+						}
+					});
+				}, 1000);
+			});
+
+			// fake click on first revision (i.e current revision)
+			$('#revisionsContainer li').first().find('.versionPreview').click();
+		},
+
+		showEditor : function(title, fileId, action){
+			if (documentsMain.isGuest){
+				// !Login page mess wih WebODF toolbars
+				$(document.body).attr('id', 'body-user');
+			}
+
+			if (documentsMain.loadError) {
+				documentsMain.onEditorShutdown(documentsMain.loadErrorMessage + '\n' + documentsMain.loadErrorHint);
+				return;
+			}
+
+			if (!documentsMain.renderComplete) {
+				setTimeout(function() { documentsMain.UI.showEditor(title, action); }, 500);
+				console.log('Waiting for page to render…');
+				return;
+			}
+			parent.postMessage('loading', '*');
+
+			$(document.body).addClass("claro");
+			$(document.body).prepend(documentsMain.UI.container);
+
+			$('title').text(title + ' - ' + documentsMain.UI.mainTitle);
+
+
+			// WOPISrc - URL that loolwsd will access (ie. pointing to ownCloud)
+			var wopiurl = window.location.protocol + '//' + window.location.host + OC.generateUrl('apps/richdocuments/wopi/files/{file_id}', {file_id: documentsMain.fileId});
+			var wopisrc = encodeURIComponent(wopiurl);
+
+			// urlsrc - the URL from discovery xml that we access for the particular
+			// document; we add various parameters to that.
+			// The discovery is available at
+			//	 https://<loolwsd-server>:9980/hosting/discovery
+			var urlsrc = documentsMain.urlsrc +
+				"WOPISrc=" + wopisrc +
+				"&title=" + encodeURIComponent(title) +
+				"&lang=" + OC.getLocale().replace('_', '-') + // loleaflet expects a BCP47 language tag syntax
+				"&closebutton=1" +
+				"&revisionhistory=1";
+			if (!documentsMain.canEdit || action === "view") {
+				urlsrc += "&permission=readonly";
+			}
+
+			// access_token - must be passed via a form post
+			var access_token = encodeURIComponent(documentsMain.token);
+
+			// form to post the access token for WOPISrc
+			var form = '<form id="loleafletform" name="loleafletform" target="loleafletframe" action="' + urlsrc + '" method="post">' +
+				'<input name="access_token" value="' + access_token + '" type="hidden"/></form>';
+
+			// iframe that contains the Collabora Online
+			var frame = '<iframe id="loleafletframe" name= "loleafletframe" allowfullscreen style="width:100%;height:100%;position:absolute;" />';
+
+			$('#mainContainer').append(form);
+			$('#mainContainer').append(frame);
+
+			// Listen for App_LoadingStatus as soon as possible
+			$('#loleafletframe').ready(function() {
+				var editorInitListener = function(e) {
+					var msg = JSON.parse(e.data);
+					if (msg.MessageId === 'App_LoadingStatus') {
+						window.removeEventListener('message', editorInitListener, false);
+					}
+				};
+				window.addEventListener('message', editorInitListener, false);
+			});
+
+			$('#loleafletframe').load(function(){
+				// And start listening to incoming post messages
+				window.addEventListener('message', function(e){
+					if (documentsMain.isViewerMode) {
+						return;
+					}
+
+					try {
+						var msg = JSON.parse(e.data);
+						var msgId = msg.MessageId;
+						var args = msg.Values;
+						var deprecated = !!args.Deprecated;
+					} catch(exc) {
+						msgId = e.data;
+					}
+
+					if (msgId === 'UI_Close' || msgId === 'close' /* deprecated */) {
+						// If a postmesage API is deprecated, we must ignore it and wait for the standard postmessage
+						// (or it might already have been fired)
+						if (deprecated)
+							return;
+
+						documentsMain.onClose();
+					} else if (msgId === 'UI_FileVersions' || msgId === 'rev-history' /* deprecated */) {
+						if (deprecated)
+							return;
+
+						documentsMain.UI.showRevHistory(documentsMain.fullPath);
+					} else if (msgId === 'UI_SaveAs') {
+						// TODO it's not possible to enter the
+						// filename into the OC.dialogs.filepicker; so
+						// it will be necessary to use an own tree
+						// view or something :-(
+						//OC.dialogs.filepicker(t('richdocuments', 'Save As'),
+						//      function(val) {
+						//              console.log(val);
+						//              documentsMain.WOPIPostMessage($('#loleafletframe')[0], Action_SaveAs', {'Filename': val});
+						//      }, false, null, true);
+						OC.dialogs.prompt(t('richdocuments', 'Please enter filename to which this document should be stored.'),
+						                  t('richdocuments', 'Save As'),
+						                  function(result, value) {
+							                  if (result === true) {
+								                  documentsMain.WOPIPostMessage($('#loleafletframe')[0], 'Action_SaveAs', {'Filename': value});
+							                  }
+						                  },
+						                  true,
+						                  t('richdocuments', 'New filename'),
+						                  false);
+					}
+				});
+
+				// Tell the LOOL iframe that we are ready now
+				documentsMain.WOPIPostMessage($('#loleafletframe')[0], 'Host_PostmessageReady', {});
+
+				// LOOL Iframe is ready, turn off our overlay
+				// This should ideally be taken off when we receive App_LoadingStatus, but
+				// for backward compatibility with older lool, lets keep it here till we decide
+				// to break older lools
+				documentsMain.overlay.documentOverlay('hide');
+			});
+
+			//submit that
+			if(window.top.oc_current_user != null || getCookie("guestUser") != "")
+				$('#loleafletform').submit();
 			else {
-				$wopiHeaderTime = $this->request->getHeader('X-LOOL-WOPI-Timestamp');
-				if (!is_null($wopiHeaderTime) && $wopiHeaderTime != Helper::toISO8601($file->getMTime())) {
-					\OC::$server->getLogger()->debug('Document timestamp mismatch ! WOPI client says mtime {headerTime} but storage says {storageTime}', [
-						'headerTime' => $wopiHeaderTime,
-						'storageTime' => Helper::toISO8601($file->getMtime())
-					]);
-					// Tell WOPI client about this conflict.
-					return new JSONResponse(['LOOLStatusCode' => self::LOOL_STATUS_DOC_CHANGED], Http::STATUS_CONFLICT);
-				}
+				documentsMain.UI.getGuestName();
+				$('#loleafletform').submit();
+			}
+			
+			
+
+
+		},
+
+		getGuestName : function(){
+			document.cookie = "guestUser=John Doe; path=/";
+			alert("getGuestName called");
+			//TODO display UI to ask for username and set cookie.
+		},
+
+		hideEditor : function(){
+			if (documentsMain.isGuest){
+				// !Login page mess wih WebODF toolbars
+				$(document.body).attr('id', 'body-login');
+				$('footer,nav').show();
 			}
 
-			$content = fopen('php://input', 'rb');
-			// Setup the FS which is needed to emit hooks (versioning).
-			\OC_Util::tearDownFS();
-			\OC_Util::setupFS($res['owner']);
+			// Fade out editor
+			$('#mainContainer').fadeOut('fast', function() {
+				$('#mainContainer').remove();
+				$('#content-wrapper').fadeIn('fast');
+				$(document.body).removeClass('claro');
+				$('title').text(documentsMain.UI.mainTitle);
+			});
+		},
 
-			// Set the user to register the change under his name
-			$editor = \OC::$server->getUserManager()->get($res['editor']);
-			if (!is_null($editor)) {
-				\OC::$server->getUserSession()->setUser($editor);
+		showProgress : function(message){
+			if (!message){
+				message = '&nbsp;';
 			}
+			$('.documentslist .progress div').text(message);
+			$('.documentslist .progress').show();
+		},
 
-			$file->putContent($content);
+		hideProgress : function(){
+			$('.documentslist .progress').hide();
+		},
 
-			if ($isPutRelative) {
-				// generate a token for the new file (the user still has to be
-				// logged in)
-				$serverHost = $this->request->getServerProtocol() . '://' . $this->request->getServerHost();
-				list(, $wopiToken) = $this->tokenManager->getToken($file->getId());
-
-				$wopi = 'index.php/apps/richdocuments/wopi/files/' . $file->getId() . '_' . $this->config->getSystemValue('instanceid') . '?access_token=' . $wopiToken;
-				$url = \OC::$server->getURLGenerator()->getAbsoluteURL($wopi);
-
-				return new JSONResponse([ 'Name' => $file->getName(), 'Url' => $url ], Http::STATUS_OK);
-			}
-			else {
-				return new JSONResponse(['LastModifiedTime' => Helper::toISO8601($file->getMtime())]);
-			}
-		} catch (\Exception $e) {
-			return new JSONResponse([], Http::STATUS_INTERNAL_SERVER_ERROR);
+		notify : function(message){
+			OC.Notification.show(message);
+			setTimeout(OC.Notification.hide, 10000);
 		}
-	}
+	},
 
-	/**
-	 * Given an access token and a fileId, replaces the files with the request body.
-	 * Expects a valid token in access_token parameter.
-	 * Just actually routes to the PutFile, the implementation of PutFile
-	 * handles both saving and saving as.* Given an access token and a fileId, replaces the files with the request body.
-	 *
-	 * @PublicPage
-	 * @NoCSRFRequired
-	 *
-	 * @param string $fileId
-	 * @param string $access_token
-	 * @return JSONResponse
-	 */
-	public function putRelativeFile($fileId,
-					$access_token) {
-		return $this->putFile($fileId, $access_token);
+	onStartup: function() {
+
+		var fileId;
+		documentsMain.UI.init();
+
+		// Does anything indicate that we need to autostart a session?
+		fileId = getURLParameter('fileid').replace(/^\W*/, '');
+
+		documentsMain.show(fileId);
+
+		if (fileId) {
+			documentsMain.overlay.documentOverlay('show');
+			documentsMain.prepareSession();
+		}
+
+		documentsMain.ready = true;
+	},
+
+	WOPIPostMessage: function(iframe, msgId, values) {
+		if (iframe) {
+			var msg = {
+				'MessageId': msgId,
+				'SendTime': Date.now(),
+				'Values': values
+			};
+
+			iframe.contentWindow.postMessage(JSON.stringify(msg), '*');
+		}
+	},
+
+	prepareSession : function(){
+		documentsMain.isEditorMode = true;
+		documentsMain.overlay.documentOverlay('show');
+	},
+
+	initSession: function() {
+		documentsMain.urlsrc = richdocuments_urlsrc;
+		documentsMain.fullPath = richdocuments_path;
+		documentsMain.token = richdocuments_token;
+
+		$('footer,nav').hide();
+		$(documentsMain.toolbar).appendTo('#header');
+
+		documentsMain.canShare = !documentsMain.isGuest
+				&& typeof OC.Share !== 'undefined' && richdocuments_permissions & OC.PERMISSION_SHARE;
+
+		// fade out file list and show the cloudsuite
+		$('#content-wrapper').fadeOut('fast').promise().done(function() {
+
+			documentsMain.fileId = richdocuments_fileId;
+			documentsMain.fileName = richdocuments_title;
+
+			documentsMain.canEdit = Boolean(richdocuments_permissions & OC.PERMISSION_UPDATE);
+
+			documentsMain.loadDocument(documentsMain.fileName, documentsMain.fileId);
+
+			if (documentsMain.isGuest){
+				$('#odf-close').text(t('richdocuments', 'Save') );
+				$('#odf-close').removeClass('icon-view-close');
+			}
+		});
+	},
+
+	view : function(id){
+		OC.addScript('richdocuments', 'viewer/viewer', function() {
+			$(window).off('beforeunload');
+			$(window).off('unload');
+			var path = $('li[data-id='+ id +']>a').attr('href');
+			odfViewer.isDocuments = true;
+			odfViewer.onView(path);
+		});
+	},
+
+	loadDocument: function(title, fileId) {
+		documentsMain.UI.showEditor(title, fileId, 'write');
+	},
+
+	onEditorShutdown : function (message){
+			OC.Notification.show(message);
+
+			$(window).off('beforeunload');
+			$(window).off('unload');
+			if (documentsMain.isEditorMode){
+				documentsMain.isEditorMode = false;
+				parent.location.hash = "";
+			} else {
+				setTimeout(OC.Notification.hide, 7000);
+			}
+			documentsMain.UI.hideEditor();
+
+			documentsMain.show();
+			$('footer,nav').show();
+	},
+
+
+	onClose: function() {
+		documentsMain.isEditorMode = false;
+		$(window).off('beforeunload');
+		$(window).off('unload');
+		parent.location.hash = "";
+
+		$('footer,nav').show();
+		documentsMain.UI.hideEditor();
+		$('#ocToolbar').remove();
+
+		parent.postMessage('close', '*');
+	},
+
+	onCloseViewer: function() {
+		$('#revisionsContainer *').off();
+
+		$('#revPanelContainer').remove();
+		$('#revViewerContainer').remove();
+		documentsMain.isViewerMode = false;
+		documentsMain.UI.revisionsStart = 0;
+
+		$('#loleafletframe').focus();
+	},
+
+	show: function(fileId){
+		if (documentsMain.isGuest){
+			return;
+		}
+		documentsMain.UI.showProgress(t('richdocuments', 'Loading documents…'));
+		documentsMain.docs.documentGrid('render', fileId);
+		documentsMain.UI.hideProgress();
 	}
+};
+
+function getCookie(cname) {
+    var name = cname + "=";
+    var decodedCookie = decodeURIComponent(document.cookie);
+    var ca = decodedCookie.split(';');
+    for(var i = 0; i <ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0) == ' ') {
+            c = c.substring(1);
+        }
+        if (c.indexOf(name) == 0) {
+            return c.substring(name.length, c.length);
+        }
+    }
+    return "";
 }
+
+$(document).ready(function() {
+	if (!OCA.Files) {
+		OCA.Files = {};
+		OCA.Files.App = {};
+		OCA.Files.App.fileList = FileList;
+	}
+
+	if (!OC.Share) {
+		OC.Share = {};
+	}
+
+	window.Files = FileList;
+
+	documentsMain.docs = $('.documentslist').documentGrid();
+	documentsMain.overlay = $('<div id="documents-overlay" class="icon-loading"></div><div id="documents-overlay-below" class="icon-loading-dark"></div>').documentOverlay();
+
+	$('li.document a').tipsy({fade: true, live: true});
+
+
+	documentsMain.onStartup();
+});
