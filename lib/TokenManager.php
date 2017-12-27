@@ -116,11 +116,11 @@ class TokenManager {
 		$serverHost = $this->urlGenerator->getAbsoluteURL('/');//$this->request->getServerProtocol() . '://' . $this->request->getServerHost();
 		
 		if(is_null($this->userId))
-			$checkedUserId = isset($_COOKIE['guestUser']) ? 'Guest: ' . $_COOKIE['guestUser'] : null ;
+			$guest_name = isset($_COOKIE['guestUser']) ? 'Guest: ' . $_COOKIE['guestUser'] : null ;
 		else
-			$checkedUserId = $this->userId;
+			$guest_name = NULL;
 
-		$token = $row->generateFileToken($fileId, $owneruid, $checkedUserId, $version, (int)$updatable, $serverHost);
+		$token = $row->generateFileToken($fileId, $owneruid, $this->userId, $guest_name, $version, (int)$updatable, $serverHost);
 
 		try {
 
