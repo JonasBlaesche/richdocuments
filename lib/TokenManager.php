@@ -116,7 +116,7 @@ class TokenManager {
 		$serverHost = $this->urlGenerator->getAbsoluteURL('/');//$this->request->getServerProtocol() . '://' . $this->request->getServerHost();
 		
 		if(is_null($this->userId))
-			$checkedUserId = isset($_COOKIE['guestUser']) ? $_COOKIE['guestUser'] : null ;
+			$checkedUserId = isset($_COOKIE['guestUser']) ? 'Guest: ' . $_COOKIE['guestUser'] : null ;
 		else
 			$checkedUserId = $this->userId;
 

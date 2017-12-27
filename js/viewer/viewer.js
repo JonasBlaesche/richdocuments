@@ -88,6 +88,8 @@ var odfViewer = {
 		if(context) {
 			FileList.setViewerMode(true);
 		}
+		
+		
 
 		var $iframe = $('<iframe id="richdocumentsframe" allowfullscreen style="width:100%;height:100%;display:block;position:absolute;top:0;z-index:51;" src="'+viewer+'" />');
 		if ($('#isPublic').val()) {
@@ -104,9 +106,18 @@ var odfViewer = {
 		} else {
 			$('#app-content').append($iframe);
 		}
+		if(window.top.oc_current_user == null && getCookie("guestUser") == ""){
+			console.log(document.body);
+			var div = document.createElement('div');
+			div.innerHTML = '<input type="text" placeholder="Nickname" id="nickname"><input id="btn" type="button" value="Set">';
+			document.getElementById('content-wrapper').prepend(div);
+			$('#btn').click(setCookie);
+			$('#preview').hide();
+		}else{
 
-		$('#app-content #controls').addClass('hidden');
-		$('#app-content').append($iframe);
+			$('#app-content #controls').addClass('hidden');
+			$('#app-content').append($iframe);
+		}
 	},
 
 	onClose: function() {
@@ -199,6 +210,32 @@ var odfViewer = {
 		OC.Plugins.register('OCA.Files.NewFileMenu', OCA.FilesLOMenu);
 	}
 };
+
+function setCookie(){
+	var username = $('#nickname').val();
+
+	if(username != "")
+		document.cookie = "guestUser="+username+"; path=/";
+
+	location.reload(true);
+
+}
+
+function getCookie(cname) {
+    var name = cname + "=";
+    var decodedCookie = decodeURIComponent(document.cookie);
+    var ca = decodedCookie.split(';');
+    for(var i = 0; i <ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0) == ' ') {
+            c = c.substring(1);
+        }
+        if (c.indexOf(name) == 0) {
+            return c.substring(name.length, c.length);
+        }
+    }
+    return "";
+}
 
 $(document).ready(function() {
 	if ( typeof OCA !== 'undefined'
