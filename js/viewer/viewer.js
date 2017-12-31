@@ -62,6 +62,16 @@ var odfViewer = {
 			var fileDir = context.dir;
 			var fileId = context.$file.attr('data-id');
 		}
+		
+		if(window.top.oc_current_user == null && getCookie("guestUser") == ""){
+			console.log(document.body);
+			var div = document.createElement('div');
+			div.innerHTML = '<input type="text" placeholder="Nickname" id="nickname"><input id="btn" type="button" value="Set">';
+			document.getElementById('content-wrapper').prepend(div);
+			$('#btn').click(setCookie);
+			$('#preview').hide();
+			return;
+		}
 
 		var viewer;
 		if($('#isPublic').val() === '1') {
@@ -104,18 +114,6 @@ var odfViewer = {
 			$('#controls').addClass('hidden');
 			$('#content').addClass('loading');
 		} else {
-			$('#app-content').append($iframe);
-		}
-		if(window.top.oc_current_user == null && getCookie("guestUser") == ""){
-			console.log(document.body);
-			var div = document.createElement('div');
-			div.innerHTML = '<input type="text" placeholder="Nickname" id="nickname"><input id="btn" type="button" value="Set">';
-			document.getElementById('content-wrapper').prepend(div);
-			$('#btn').click(setCookie);
-			$('#preview').hide();
-		}else{
-
-			$('#app-content #controls').addClass('hidden');
 			$('#app-content').append($iframe);
 		}
 	},
