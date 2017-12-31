@@ -67,7 +67,7 @@ var odfViewer = {
 			console.log(document.body);
 			var div = document.createElement('div');
 			div.innerHTML = '<input type="text" placeholder="Nickname" id="nickname"><input id="btn" type="button" value="Set">';
-			document.getElementById('content-wrapper').prepend(div);
+			$('#content-wrapper').prepend(div);
 			$('#btn').click(setCookie);
 			$('#preview').hide();
 			return;
