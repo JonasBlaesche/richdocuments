@@ -62,7 +62,7 @@ var odfViewer = {
 			var fileDir = context.dir;
 			var fileId = context.$file.attr('data-id');
 		}
-		
+
 		if(window.top.oc_current_user == null && getCookie("guestUser") == ""){
 			console.log(document.body);
 			var div = document.createElement('div');
@@ -98,8 +98,8 @@ var odfViewer = {
 		if(context) {
 			FileList.setViewerMode(true);
 		}
-		
-		
+
+
 
 		var $iframe = $('<iframe id="richdocumentsframe" allowfullscreen style="width:100%;height:100%;display:block;position:absolute;top:0;z-index:51;" src="'+viewer+'" />');
 		if ($('#isPublic').val()) {
@@ -116,6 +116,9 @@ var odfViewer = {
 		} else {
 			$('#app-content').append($iframe);
 		}
+
+    $('#app-content #controls').addClass('hidden');
+    $('#app-content').append($iframe);
 	},
 
 	onClose: function() {
