@@ -117,8 +117,8 @@ var odfViewer = {
 			$('#app-content').append($iframe);
 		}
 
-    $('#app-content #controls').addClass('hidden');
-    $('#app-content').append($iframe);
+		$('#app-content #controls').addClass('hidden');
+		$('#app-content').append($iframe);
 	},
 
 	onClose: function() {
