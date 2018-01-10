@@ -216,7 +216,7 @@ function setCookie(){
 	var username = $('#nickname').val();
 
 	if(username != "")
-		document.cookie = "guestUser="+username+"; path=/";
+		document.cookie = "guestUser=" + encodeURIComponent(username) + "; path=/";
 
 	location.reload(true);
 
