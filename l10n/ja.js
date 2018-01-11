@@ -2,7 +2,6 @@ OC.L10N.register(
     "richdocuments",
     {
     "Saving…" : "保存中...",
-    "Saving..." : "保存中...",
     "All" : "すべて",
     "Download this revision" : "このリビジョンをダウンロード",
     "Restore this revision" : "このリビジョンを復元",
@@ -10,7 +9,6 @@ OC.L10N.register(
     "More versions…" : "他のバージョン …",
     "Just now" : "今",
     "Failed to revert the document to older version" : "以前のバージョンに戻すことに失敗しました。",
-    "Save" : "保存",
     "Loading documents…" : "ドキュメントを読込中...",
     "Edit" : "編集",
     "New Document" : "新しいドキュメント",
@@ -31,6 +29,7 @@ OC.L10N.register(
     "URL (and port) of the Collabora Online server that provides the editing functionality as a WOPI client." : "WOPI クライアントで編集できる機能を提供するコラボラ オンライン サーバーのURL(とポート)",
     "Apply" : "適用",
     "Use OOXML by default for new files" : "新しいファイルでは、デフォルトでOOXMLを使用する",
+    "Save" : "保存",
     "Wrong password. Please retry." : "パスワードが間違っています。もう一度入力してください。",
     "Password" : "パスワード",
     "OK" : "OK",
