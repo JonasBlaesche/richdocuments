@@ -29,6 +29,7 @@ use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\IURLGenerator;
 use OCP\Share\IManager;
+use \OCP\IL10N;
 
 class TokenManager {
 	/** @var IRootFolder */
@@ -51,12 +52,14 @@ class TokenManager {
 								IURLGenerator $urlGenerator,
 								Parser $wopiParser,
 								AppConfig $appConfig,
+								IL10N $trans,
 								$UserId) {
 		$this->rootFolder = $rootFolder;
 		$this->shareManager = $shareManager;
 		$this->urlGenerator = $urlGenerator;
 		$this->wopiParser = $wopiParser;
 		$this->appConfig = $appConfig;
+		$this->trans = $trans;
 		$this->userId = $UserId;
 	}
 
@@ -114,9 +117,9 @@ class TokenManager {
 		}
 		$row = new Wopi();
 		$serverHost = $this->urlGenerator->getAbsoluteURL('/');//$this->request->getServerProtocol() . '://' . $this->request->getServerHost();
-		
+
 		if(is_null($this->userId))
-			$guest_name = isset($_COOKIE['guestUser']) ? 'Guest: ' . $_COOKIE['guestUser'] : null ;
+			$guest_name = isset($_COOKIE['guestUser']) ? $this->trans->t('Guest: %s', $_COOKIE['guestUser']) : null ;
 		else
 			$guest_name = NULL;
 
