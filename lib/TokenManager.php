@@ -40,11 +40,14 @@ class TokenManager {
 	private $urlGenerator;
 	/** @var Parser */
 	private $wopiParser;
+	/** @var IL10N */
+	private $trans;
 
 	/**
 	 * @param IRootFolder $rootFolder
 	 * @param IManager $shareManager
 	 * @param IURLGenerator $urlGenerator
+	 * @param IL10N $trans
 	 * @param string $UserId
 	 */
 	public function __construct(IRootFolder $rootFolder,
