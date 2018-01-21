@@ -63,11 +63,32 @@ var odfViewer = {
 			var fileId = context.$file.attr('data-id');
 		}
 
+		//Handle guest user
 		if(window.top.oc_current_user == null && getCookie("guestUser") == ""){
-			console.log(document.body);
+			$('#content').remove();
+					
+			var text = document.createElement('div');
+			$(text).attr('style', 'margin: 0 auto;width:385px; margin-top: 100px;');
+			
+			var para = '<p>Please log in or choose your nickname to continue as guest user.</p>';
+			text.innerHTML = para;
+			
+
 			var div = document.createElement('div');
-			div.innerHTML = '<input type="text" placeholder="Nickname" id="nickname"><input id="btn" type="button" value="Set">';
+			$(div).attr('style', 'margin: 0 auto;width:195px;');
+			var nick = '<input type="text" placeholder="Nickname" id="nickname" style="border-right:none; border-top-right-radius: 0; border-bottom-right-radius: 0">';
+			var btn = '<input style="border-left:none; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left:-3px" type="button" id="btn" type="button" value="Set">';
+			div.innerHTML =nick + btn;
+			
+			
+			
 			$('#content-wrapper').prepend(div);
+			$('#content-wrapper').prepend(text);
+			$('#nickname').keyup(function(event){
+				if(event.which === 13){
+					setCookie();
+				}
+			});
 			$('#btn').click(setCookie);
 			$('#preview').hide();
 			return;
@@ -210,16 +231,18 @@ var odfViewer = {
 	}
 };
 
+//set cookie with user specified name
 function setCookie(){
 	var username = $('#nickname').val();
 
 	if(username != "")
-		document.cookie = "guestUser=" + encodeURIComponent(username) + "; path=/";
+		document.cookie = "guestUser=" + encodeURIComponent(username) +"; path=/";
 
 	location.reload(true);
 
 }
 
+//Return value of cookie cname, if not set return ""
 function getCookie(cname) {
     var name = cname + "=";
     var decodedCookie = decodeURIComponent(document.cookie);
