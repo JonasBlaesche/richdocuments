@@ -376,7 +376,7 @@ var documentsMain = {
 						//              console.log(val);
 						//              documentsMain.WOPIPostMessage($('#loleafletframe')[0], Action_SaveAs', {'Filename': val});
 						//      }, false, null, true);
-						OC.dialogs.prompt(t('richdocuments', 'Please enter filename to which this document should be stored.'),
+						OC.dialogs.prompt(t('richdocuments', 'Please enter the filename to store the document as.'),
 						                  t('richdocuments', 'Save As'),
 						                  function(result, value) {
 							                  if (result === true) {
@@ -399,23 +399,9 @@ var documentsMain = {
 				documentsMain.overlay.documentOverlay('hide');
 			});
 
-			//submit that
-			if(window.top.oc_current_user != null || getCookie("guestUser") != "")
-				$('#loleafletform').submit();
-			else {
-				documentsMain.UI.getGuestName();
-				$('#loleafletform').submit();
-			}
+			// submit that
+			$('#loleafletform').submit();
 
-
-
-
-		},
-
-		getGuestName : function(){
-			document.cookie = "guestUser=John Doe; path=/";
-			alert("getGuestName called");
-			//TODO display UI to ask for username and set cookie.
 		},
 
 		hideEditor : function(){
@@ -447,7 +433,6 @@ var documentsMain = {
 	},
 
 	onStartup: function() {
-
 		var fileId;
 		documentsMain.UI.init();
 
@@ -566,23 +551,8 @@ var documentsMain = {
 	}
 };
 
-function getCookie(cname) {
-    var name = cname + "=";
-    var decodedCookie = decodeURIComponent(document.cookie);
-    var ca = decodedCookie.split(';');
-    for(var i = 0; i <ca.length; i++) {
-        var c = ca[i];
-        while (c.charAt(0) == ' ') {
-            c = c.substring(1);
-        }
-        if (c.indexOf(name) == 0) {
-            return c.substring(name.length, c.length);
-        }
-    }
-    return "";
-}
-
 $(document).ready(function() {
+
 	if (!OCA.Files) {
 		OCA.Files = {};
 		OCA.Files.App = {};
