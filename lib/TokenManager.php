@@ -121,10 +121,11 @@ class TokenManager {
 		$row = new Wopi();
 		$serverHost = $this->urlGenerator->getAbsoluteURL('/');//$this->request->getServerProtocol() . '://' . $this->request->getServerHost();
 
-		if(is_null($this->userId))
-			$guest_name = isset($_COOKIE['guestUser']) ? $this->trans->t('Guest: %s', $_COOKIE['guestUser']) : null ;
-		else
+		if (is_null($this->userId) && isset($_COOKIE['guestUser'])) {
+			$guest_name = $this->trans->t('Guest: %s', $_COOKIE['guestUser']);
+		} else {
 			$guest_name = NULL;
+		}
 
 		$token = $row->generateFileToken($fileId, $owneruid, $this->userId, $guest_name, $version, (int)$updatable, $serverHost);
 
