@@ -70,14 +70,14 @@ var odfViewer = {
 			var text = document.createElement('div');
 			$(text).attr('style', 'margin: 0 auto; margin-top: 100px; text-align: center;');
 			
-			var para = 'Please log in or choose your nickname to continue as guest user.';
+			var para = t('richdocuments', 'Please log in or choose your nickname to continue as guest user.');
 			text.innerHTML = para;
 			
 
 			var div = document.createElement('div');
 			$(div).attr('style', 'margin: 0 auto;width:195px;');
-			var nick = '<input type="text" placeholder="Nickname" id="nickname" style="border-right:none; border-top-right-radius: 0; border-bottom-right-radius: 0">';
-			var btn = '<input style="border-left:none; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left:-3px" type="button" id="btn" type="button" value="Set">';
+			var nick = '<input type="text" placeholder="'+t('richdocuments','Nickname')+'" id="nickname" style="border-right:none; border-top-right-radius: 0; border-bottom-right-radius: 0">';
+			var btn = '<input style="border-left:none; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left:-3px" type="button" id="btn" type="button" value="'+ t('richdocuments','Set')+'">';
 			div.innerHTML = nick + btn;
 			
 			
