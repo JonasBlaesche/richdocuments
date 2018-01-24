@@ -68,9 +68,9 @@ var odfViewer = {
 			$('#content').remove();
 					
 			var text = document.createElement('div');
-			$(text).attr('style', 'margin: 0 auto;width:385px; margin-top: 100px;');
+			$(text).attr('style', 'margin: 0 auto; margin-top: 100px; text-align: center;');
 			
-			var para = '<p>Please log in or choose your nickname to continue as guest user.</p>';
+			var para = 'Please log in or choose your nickname to continue as guest user.';
 			text.innerHTML = para;
 			
 
